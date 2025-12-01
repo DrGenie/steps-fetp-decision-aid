@@ -270,7 +270,7 @@ function logistic(x) {
 }
 
 function computeNonCostUtility(cfg, coefs) {
-    const uAsc = coefs.ascProgram || 0;
+    const uAsc = coefs.ascProgram || 1;
     const uTier = coefs.tier[cfg.tier] || 0;
     const uCareer = coefs.career[cfg.career] || 0;
     const uMentor = coefs.mentorship[cfg.mentorship] || 0;
