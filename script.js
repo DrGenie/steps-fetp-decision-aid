@@ -1010,7 +1010,7 @@ function buildHeadlineText(results) {
 }
 
 function updateResultsTab(results) {
-    const { util, costs, epi, totalCostAllCohorts, totalBenefitAllCohorts, netBenefitAllCohorts, bcr } = results;
+    const { util, costs, epi, totalCostAllCohorts, netBenefitAllCohorts, bcr } = results;
     const endorsePercent = util.endorseProb * 100;
     const optOutPercent = util.optOutProb * 100;
 
@@ -1098,7 +1098,7 @@ function updateCostingTab(results) {
             <td>${formatCurrency(oppCost, state.currency)}</td>
             <td>-</td>
         </tr>
-    ";
+    `;
 
     list.innerHTML = `
         ${descrText}
@@ -1122,7 +1122,7 @@ function updateCostingTab(results) {
 }
 
 function updateNationalSimulation(results) {
-    const { cfg, epi, totalCostAllCohorts, totalBenefitAllCohorts, netBenefitAllCohorts, bcr } = results;
+    const { epi, totalCostAllCohorts, totalBenefitAllCohorts, netBenefitAllCohorts, bcr } = results;
 
     setText("nat-total-cost", formatCurrency(totalCostAllCohorts, state.currency));
     setText("nat-total-benefit", formatCurrency(totalBenefitAllCohorts, state.currency));
