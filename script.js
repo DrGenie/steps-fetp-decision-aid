@@ -166,6 +166,9 @@ const COST_TEMPLATES = {
     }
 };
 
+/* External JSON driven cost configuration (full templates) */
+let COST_CONFIG = null;
+
 /* ===========================
    Epidemiological settings
    =========================== */
@@ -362,12 +365,70 @@ function getProgrammeDurationMonths(tier) {
     return 3;
 }
 
+/**
+ * Prefer external cost_config.json if present.
+ * If available, derive direct shares and opportunity cost rate
+ * from absolute component amounts, so the tool respects the
+ * full WHO / NIE / NCDC templates. Otherwise, fall back to
+ * the simpler COST_TEMPLATES object.
+ */
 function getCurrentCostTemplate(tier) {
+    let chosenId = state.currentCostSourceId || null;
+
+    // Prefer external JSON configuration
+    if (COST_CONFIG && COST_CONFIG[tier]) {
+        const tierConfig = COST_CONFIG[tier];
+        const ids = Object.keys(tierConfig);
+        if (ids.length) {
+            if (!chosenId || !tierConfig[chosenId]) {
+                chosenId = ids[0];
+                state.currentCostSourceId = chosenId;
+            }
+            const src = tierConfig[chosenId];
+
+            const allComponents = src.components || [];
+            const nonOpp = allComponents.filter(c => !c.isOpportunityCost);
+            const opp = allComponents.filter(c => c.isOpportunityCost);
+
+            const totalNonOpp = nonOpp.reduce((sum, c) => sum + (c.amountTotal || 0), 0);
+            const totalOpp = opp.reduce((sum, c) => sum + (c.amountTotal || 0), 0);
+
+            const oppRate = totalNonOpp > 0 ? totalOpp / totalNonOpp : 0;
+
+            const components = nonOpp.map((c, idx) => {
+                const share = totalNonOpp > 0 ? (c.amountTotal || 0) / totalNonOpp : 0;
+                const labelParts = [];
+                if (c.major) labelParts.push(c.major);
+                if (c.category) labelParts.push(c.category);
+                if (c.subCategory) labelParts.push(c.subCategory);
+                const labelBase = labelParts.length ? labelParts.join(" / ") : `Cost component ${idx + 1}`;
+                const label = c.label || labelBase;
+                return {
+                    id: c.id || `comp_${idx}`,
+                    label,
+                    directShare: share,
+                    major: c.major || "",
+                    category: c.category || "",
+                    subCategory: c.subCategory || "",
+                    description: c.description || ""
+                };
+            });
+
+            return {
+                id: src.id || chosenId,
+                label: src.label || chosenId,
+                description: src.description || "",
+                oppRate,
+                components
+            };
+        }
+    }
+
+    // Fallback: legacy stylised templates
     const templatesForTier = COST_TEMPLATES[tier] || {};
     const availableIds = Object.keys(templatesForTier);
     if (!availableIds.length) return null;
 
-    let chosenId = state.currentCostSourceId;
     if (!chosenId || !templatesForTier[chosenId]) {
         chosenId = availableIds[0];
         state.currentCostSourceId = chosenId;
@@ -407,7 +468,11 @@ function computeCosts(cfg) {
             label: comp.label,
             share: comp.directShare || 0,
             amountPerCohort: compAmountPerCohort,
-            amountPerTraineePerMonth
+            amountPerTraineePerMonth,
+            major: comp.major || "",
+            category: comp.category || "",
+            subCategory: comp.subCategory || "",
+            description: comp.description || ""
         };
     });
 
@@ -646,8 +711,15 @@ function populateCostSourceOptions(tier) {
     const select = document.getElementById("cost-source");
     if (!select) return;
 
-    const templatesForTier = COST_TEMPLATES[tier] || {};
-    const ids = Object.keys(templatesForTier);
+    let sourcesForTier = null;
+
+    if (COST_CONFIG && COST_CONFIG[tier]) {
+        sourcesForTier = COST_CONFIG[tier];
+    } else {
+        sourcesForTier = COST_TEMPLATES[tier] || {};
+    }
+
+    const ids = Object.keys(sourcesForTier);
 
     select.innerHTML = "";
 
@@ -660,17 +732,17 @@ function populateCostSourceOptions(tier) {
         return;
     }
 
-    ids.forEach(id => {
-        const tpl = templatesForTier[id];
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = tpl.label;
-        select.appendChild(opt);
-    });
-
-    if (!state.currentCostSourceId || !templatesForTier[state.currentCostSourceId]) {
+    if (!state.currentCostSourceId || !sourcesForTier[state.currentCostSourceId]) {
         state.currentCostSourceId = ids[0];
     }
+
+    ids.forEach(id => {
+        const tpl = sourcesForTier[id];
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = tpl.label || id;
+        select.appendChild(opt);
+    });
 
     select.value = state.currentCostSourceId;
 
@@ -682,6 +754,7 @@ function populateCostSourceOptions(tier) {
         updateCostingTab(results);
         updateResultsTab(results);
         updateNationalSimulation(results);
+        updateConfigSummary(results);
     });
 }
 
@@ -930,9 +1003,20 @@ function updateCostingTab(results) {
 
     const componentsRows = (costs.components || []).map(comp => {
         const sharePercent = comp.share * 100;
+        const metaParts = [];
+        if (comp.major) metaParts.push(comp.major);
+        if (comp.category) metaParts.push(comp.category);
+        if (comp.subCategory) metaParts.push(comp.subCategory);
+        const metaText = metaParts.join(" / ");
+        const metaBlock = metaText ? `<div class="cost-component-meta">${metaText}</div>` : "";
+        const descrBlock = comp.description ? `<div class="cost-component-description">${comp.description}</div>` : "";
         return `
             <tr>
-                <td>${comp.label}</td>
+                <td>
+                    <div class="cost-component-name">${comp.label}</div>
+                    ${metaBlock}
+                    ${descrBlock}
+                </td>
                 <td>${sharePercent.toFixed(1)} %</td>
                 <td>${formatCurrency(comp.amountPerCohort, state.currency)}</td>
                 <td>${formatCurrency(comp.amountPerTraineePerMonth, state.currency)}</td>
@@ -943,11 +1027,11 @@ function updateCostingTab(results) {
     const oppRow = `
         <tr>
             <td>Opportunity cost of trainee time</td>
-            <td>${template ? (template.oppRate * 100).toFixed(1) + " %" : "-"}</td>
+            <td>${template && typeof template.oppRate === "number" ? (template.oppRate * 100).toFixed(1) + " %" : "-"}</td>
             <td>${formatCurrency(oppCost, state.currency)}</td>
             <td>-</td>
         </tr>
-    `;
+    ";
 
     list.innerHTML = `
         ${descrText}
@@ -1283,6 +1367,36 @@ function loadEpiConfigIfPresent() {
         });
 }
 
+/**
+ * Load full cost templates from cost_config.json if present.
+ * This ensures the costing tab reflects the actual WHO / NIE / NCDC
+ * components and totals rather than stylised placeholders.
+ */
+function loadCostConfigIfPresent() {
+    fetch("cost_config.json")
+        .then(resp => {
+            if (!resp.ok) throw new Error("No external cost_config.json");
+            return resp.json();
+        })
+        .then(json => {
+            COST_CONFIG = json;
+            // Refresh cost source options based on current tier
+            const cfg = readConfigurationFromInputs();
+            populateCostSourceOptions(cfg.tier);
+            // Recompute with richer templates so the first view already
+            // reflects actual cost structures
+            const results = computeFullResults(cfg);
+            state.lastResults = results;
+            updateConfigSummary(results);
+            updateResultsTab(results);
+            updateCostingTab(results);
+            updateNationalSimulation(results);
+        })
+        .catch(() => {
+            COST_CONFIG = null;
+        });
+}
+
 function populateAdvancedSettingsInputs() {
     const s = state.epiSettings;
 
@@ -1367,8 +1481,6 @@ function updateAssumptionLog(cfg) {
 
     const s = state.epiSettings;
     const nowIso = new Date().toISOString();
-
-    const tierSettings = s.tiers[cfg.tier];
 
     const logLines = [
         `STEPS assumption log - ${nowIso}`,
@@ -2350,6 +2462,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupCoreInteractions();
     setupTechnicalAppendix();
     loadEpiConfigIfPresent();
+    loadCostConfigIfPresent();
     loadSavedScenarios();
     setupTour();
 
