@@ -69,6 +69,73 @@ const LC2_COEFS = {
     costPerThousand: -0.001
 };
 
+function initTabs() {
+    const tabButtons = document.querySelectorAll('.tab-bar .tab-link');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    if (!tabButtons.length || !tabPanels.length) return;
+
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-tab'); // e.g. "config"
+            const panelId = `tab-${target}`;             // e.g. "tab-config"
+
+            // deactivate all
+            tabButtons.forEach(b => b.classList.remove('active'));
+            tabPanels.forEach(p => p.classList.remove('active'));
+
+            // activate clicked tab and panel
+            btn.classList.add('active');
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.classList.add('active');
+            }
+        });
+    });
+}
+
+function showToast(message, duration = 3000) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+
+    toast.textContent = message;
+
+    // show
+    toast.classList.remove('hidden');
+    toast.classList.add('visible');
+
+    // clear previous timeout if any
+    if (showToast._timeoutId) {
+        clearTimeout(showToast._timeoutId);
+    }
+
+    showToast._timeoutId = setTimeout(() => {
+        toast.classList.remove('visible');
+        toast.classList.add('hidden');
+    }, duration);
+}
+
+function initToastButtons() {
+    const buttonMessages = [
+        { id: 'update-results', msg: 'Configuration applied and results updated.' },
+        { id: 'open-snapshot', msg: 'Opening scenario summary.' },
+        { id: 'save-scenario', msg: 'Scenario saved to the list.' },
+        { id: 'export-excel', msg: 'Preparing Excel download for saved scenarios.' },
+        { id: 'export-pdf', msg: 'Preparing policy brief PDF.' },
+        { id: 'advanced-apply', msg: 'Advanced settings applied for this session.' },
+        { id: 'advanced-reset', msg: 'Advanced settings reset to defaults.' }
+    ];
+
+    buttonMessages.forEach(({ id, msg }) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('click', () => {
+                showToast(msg);
+            });
+        }
+    });
+}
+
 /* ===========================
    Cost templates
    =========================== */
@@ -2456,6 +2523,8 @@ function setupCoreInteractions() {
    =========================== */
 
 document.addEventListener("DOMContentLoaded", () => {
+    initTabs();
+    initToastButtons();
     setupTabs();
     setupInfoTooltips();
     setupModal();
