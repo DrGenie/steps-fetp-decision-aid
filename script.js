@@ -1041,6 +1041,7 @@ function updateCostingTab(results) {
 
     const summary = document.getElementById("cost-breakdown-summary");
     const list = document.getElementById("cost-components-list");
+    const templateDescrEl = document.getElementById("cost-template-description");
 
     if (!summary || !list) return;
 
@@ -1048,6 +1049,7 @@ function updateCostingTab(results) {
     const oppCost = costs.opportunityCostPerCohort;
     const directCost = costs.programmeCostPerCohort;
 
+    // Top summary cards (unchanged)
     summary.innerHTML = `
         <div class="cost-summary-card">
             <div class="cost-summary-label">Programme cost per cohort</div>
@@ -1063,30 +1065,36 @@ function updateCostingTab(results) {
         </div>
     `;
 
-    let descrText = "";
-    if (template) {
-        descrText = `<p class="hint">${template.description}</p>`;
+    // Optional: set dynamic template description if the element exists
+    if (templateDescrEl) {
+        templateDescrEl.textContent = template && template.description ? template.description : "";
     }
 
+    // Build rows for the existing table:
+    // HTML header has 5 columns:
+    // Component | Share of programme cost | Amount per cohort | Amount per trainee per month | Notes
     const componentsRows = (costs.components || []).map(comp => {
         const sharePercent = comp.share * 100;
+
         const metaParts = [];
         if (comp.major) metaParts.push(comp.major);
         if (comp.category) metaParts.push(comp.category);
         if (comp.subCategory) metaParts.push(comp.subCategory);
         const metaText = metaParts.join(" / ");
         const metaBlock = metaText ? `<div class="cost-component-meta">${metaText}</div>` : "";
-        const descrBlock = comp.description ? `<div class="cost-component-description">${comp.description}</div>` : "";
+
+        const notesText = comp.description || "";
+
         return `
             <tr>
                 <td>
                     <div class="cost-component-name">${comp.label}</div>
                     ${metaBlock}
-                    ${descrBlock}
                 </td>
                 <td>${sharePercent.toFixed(1)} %</td>
                 <td>${formatCurrency(comp.amountPerCohort, state.currency)}</td>
                 <td>${formatCurrency(comp.amountPerTraineePerMonth, state.currency)}</td>
+                <td>${notesText}</td>
             </tr>
         `;
     }).join("");
@@ -1094,31 +1102,17 @@ function updateCostingTab(results) {
     const oppRow = `
         <tr>
             <td>Opportunity cost of trainee time</td>
-            <td>${template && typeof template.oppRate === "number" ? (template.oppRate * 100).toFixed(1) + " %" : "-"}</td>
+            <td>${template && typeof template.oppRate === "number"
+                ? (template.oppRate * 100).toFixed(1) + " %"
+                : "-"}</td>
             <td>${formatCurrency(oppCost, state.currency)}</td>
             <td>-</td>
+            <td>Included when the opportunity cost toggle is on.</td>
         </tr>
     `;
 
-    list.innerHTML = `
-        ${descrText}
-        <div class="table-wrapper">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Cost component</th>
-                        <th>Share of direct cost</th>
-                        <th>Amount per cohort</th>
-                        <th>Amount per trainee per month</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${componentsRows}
-                    ${oppRow}
-                </tbody>
-            </table>
-        </div>
-    `;
+    // IMPORTANT: only fill the existing <tbody>, do NOT inject another table
+    list.innerHTML = componentsRows + oppRow;
 }
 
 function updateNationalSimulation(results) {
